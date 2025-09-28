@@ -12,6 +12,29 @@ api_key = os.getenv("GEMINI_API_KEY")
 if not api_key:
     raise ValueError("GEMINI_API_KEY not found in environment. Please set it in your .env file.")
 
+# Configure Gemini client
+genai.configure(api_key=api_key)
+
+@st.cache_data
+def get_gemini_response(user_prompt, temperature):
+    # Create a model instance (Gemini Pro)
+    model = genai.GenerativeModel("models/gemini-2.5-flash")
+    
+    # Configure generation parameters
+    generation_config = genai.types.GenerationConfig(
+        temperature=temperature,
+        max_output_tokens=1000,
+        top_p=0.95,
+        top_k=64
+    )
+    
+    # Send a prompt and get a response with temperature control
+    response = model.generate_content(
+        user_prompt,
+        generation_config=generation_config
+    )
+    
+    return response.text
 
 st.title("Hello, GenAI!")
 st.write("This is your first Streamlit app.")
@@ -29,28 +52,11 @@ temperature = st.slider(
     help="Controls randomness: 0 = deterministic, 2 = very creative"
     )
 
-# Configure Gemini client
-genai.configure(api_key=api_key)
-
-# Create a model instance (Gemini Pro)
-model = genai.GenerativeModel("models/gemini-2.5-flash")
-
-# Configure generation parameters
-generation_config = genai.types.GenerationConfig(
-    temperature=temperature,
-    max_output_tokens=1000,
-    top_p=0.95,
-    top_k=64
-)
-
-# Send a prompt and get a response with temperature control
+# Get response with caching
 with st.spinner("AI is working..."):
-    response = model.generate_content(
-        user_prompt,
-        generation_config=generation_config
-    )
+    response_text = get_gemini_response(user_prompt, temperature)
     
     # Display the response from Gemini
-    st.write(response.text)
+    st.write(response_text)
 
 # run the app with: streamlit run app.py
