@@ -6,3 +6,5 @@ altair
 matplotlib
 python-dotenv
 openai
+google-genai
+google-generativeai
