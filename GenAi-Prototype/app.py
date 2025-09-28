@@ -17,27 +17,44 @@ genai.configure(api_key=api_key)
 
 @st.cache_data
 def get_gemini_response(user_prompt, temperature):
-    # Create a model instance (Gemini Pro)
-    model = genai.GenerativeModel("models/gemini-2.5-flash")
+    # Configure safety settings to be less restrictive
+    safety_settings = [
+        {
+            "category": "HARM_CATEGORY_HARASSMENT",
+            "threshold": "BLOCK_NONE"
+        },
+        {
+            "category": "HARM_CATEGORY_HATE_SPEECH", 
+            "threshold": "BLOCK_NONE"
+        },
+        {
+            "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+            "threshold": "BLOCK_NONE"
+        },
+        {
+            "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+            "threshold": "BLOCK_NONE"
+        }
+    ]
     
-    # Configure generation parameters
-    generation_config = genai.types.GenerationConfig(
-        temperature=temperature,
-        max_output_tokens=1000,
-        top_p=0.95,
-        top_k=64
+    # Create a model instance (Gemini Pro) with relaxed safety settings
+    model = genai.GenerativeModel(
+        "models/gemini-2.5-flash",
+        safety_settings=safety_settings
     )
     
-    # Send a prompt and get a response with temperature control
-    response = model.generate_content(
-        user_prompt,
-        generation_config=generation_config
-    )
-    
-    return response.text
+    try:
+        # Send a prompt and get a response (simple approach like debug version)
+        response = model.generate_content(user_prompt)
+        
+        # Simple approach - just return the text like in debug version
+        return response.text
+        
+    except Exception as e:
+        return f"❌ Error generating response: {str(e)}"
 
 st.title("Hello, GenAI!")
-st.write("This is your first Streamlit app.")
+st.write("This is your first Streamlit app with Gemini API.")
 
 # Add a text input box for the user prompt
 user_prompt = st.text_input("Enter your prompt:", "Explain generative AI in one sentence.")
@@ -54,7 +71,7 @@ temperature = st.slider(
 
 # Get response with caching
 with st.spinner("AI is working..."):
-    response_text = get_gemini_response(user_prompt, temperature)
+    response_text = get_gemini_response(user_prompt, 0.7)  # Use fixed temperature for now
     
     # Display the response from Gemini
     st.write(response_text)
