@@ -23,6 +23,7 @@ echo "streamlit" > requirements.txt
 
 1. Create a Python virtual environment:
    ```bash
+   cd GenAI-Prototype/
    python -m venv .venv
    ```
 2. Activate your virtual environment:
