@@ -19,17 +19,38 @@ st.write("This is your first Streamlit app.")
 # Add a text input box for the user prompt
 user_prompt = st.text_input("Enter your prompt:", "Explain generative AI in one sentence.")
 
+# Add a slider for temperature
+temperature = st.slider(
+    "Model temperature:",
+    min_value=0.0,
+    max_value=2.0,
+    value=0.7,
+    step=0.01,
+    help="Controls randomness: 0 = deterministic, 2 = very creative"
+    )
+
 # Configure Gemini client
 genai.configure(api_key=api_key)
 
 # Create a model instance (Gemini Pro)
 model = genai.GenerativeModel("models/gemini-2.5-flash")
 
-# Send a prompt and get a response
-response = model.generate_content(user_prompt)
+# Configure generation parameters
+generation_config = genai.types.GenerationConfig(
+    temperature=temperature,
+    max_output_tokens=1000,
+    top_p=0.95,
+    top_k=64
+)
 
-# Print the response from Gemini
-# print(response.text)
-st.write(response.text)
+# Send a prompt and get a response with temperature control
+with st.spinner("AI is working..."):
+    response = model.generate_content(
+        user_prompt,
+        generation_config=generation_config
+    )
+    
+    # Display the response from Gemini
+    st.write(response.text)
 
 # run the app with: streamlit run app.py
