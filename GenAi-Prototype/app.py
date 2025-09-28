@@ -16,6 +16,9 @@ if not api_key:
 st.title("Hello, GenAI!")
 st.write("This is your first Streamlit app.")
 
+# Add a text input box for the user prompt
+user_prompt = st.text_input("Enter your prompt:", "Explain generative AI in one sentence.")
+
 # Configure Gemini client
 genai.configure(api_key=api_key)
 
@@ -23,7 +26,7 @@ genai.configure(api_key=api_key)
 model = genai.GenerativeModel("models/gemini-2.5-flash")
 
 # Send a prompt and get a response
-response = model.generate_content("Explain generative AI in one sentence.")
+response = model.generate_content(user_prompt)
 
 # Print the response from Gemini
 # print(response.text)
