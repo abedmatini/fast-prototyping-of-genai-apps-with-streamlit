@@ -6,6 +6,82 @@ import altair as alt
 import matplotlib.pyplot as plt
 import re
 import os
+import google.generativeai as genai
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+# Initialize Google AI (Gemini) client
+try:
+    api_key = os.getenv("GEMINI_API_KEY")
+    if api_key:
+        genai.configure(api_key=api_key)
+        gemini_available = True
+    else:
+        gemini_available = False
+        st.warning("GEMINI_API_KEY not found. AI sentiment analysis will be disabled.")
+except Exception as e:
+    gemini_available = False
+    st.warning(f"Gemini client not available: {e}")
+
+
+# Function to get sentiment using Gemini AI
+@st.cache_data
+def get_sentiment_with_gemini(text):
+    if not gemini_available:
+        return "Neutral"
+    if not text or pd.isna(text):
+        return "Neutral"
+    
+    try:
+        # Configure safety settings (same as app.py)
+        safety_settings = [
+            {
+                "category": "HARM_CATEGORY_HARASSMENT",
+                "threshold": "BLOCK_NONE"
+            },
+            {
+                "category": "HARM_CATEGORY_HATE_SPEECH", 
+                "threshold": "BLOCK_NONE"
+            },
+            {
+                "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                "threshold": "BLOCK_NONE"
+            },
+            {
+                "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+                "threshold": "BLOCK_NONE"
+            }
+        ]
+        
+        # Create model instance
+        model = genai.GenerativeModel(
+            "models/gemini-2.5-flash",
+            safety_settings=safety_settings
+        )
+        
+        # Create prompt for sentiment analysis
+        prompt = f"Classify the sentiment of the following customer review as exactly one word: Positive, Negative, or Neutral.\n\nReview: {text}\n\nSentiment:"
+        
+        # Get response
+        response = model.generate_content(prompt)
+        sentiment = response.text.strip()
+        
+        # Ensure valid response
+        valid_sentiments = ["Positive", "Negative", "Neutral"]
+        if sentiment in valid_sentiments:
+            return sentiment
+        else:
+            # Try to extract valid sentiment from response
+            for valid in valid_sentiments:
+                if valid.lower() in sentiment.lower():
+                    return valid
+            return "Neutral"
+            
+    except Exception as e:
+        st.error(f"Gemini API error: {e}")
+        return "Neutral"
 
 
 # Helper function to get dataset path
@@ -27,8 +103,8 @@ def clean_text(text):
 st.title("📊 Customer Reviews Data Analyzer")
 st.write("This is your data processing and analysis app.")
 
-# Layout two buttons side by side
-col1, col2 = st.columns(2)
+# Layout buttons in a grid
+col1, col2, col3 = st.columns(3)
 
 with col1:
     if st.button("📥 Ingest Dataset"):
@@ -42,22 +118,50 @@ with col1:
 with col2:
     if st.button("🧹 Parse Reviews"):
         if "df" in st.session_state:
-            st.session_state["df"]["CLEANED_SUMMARY"] = st.session_state["df"]["SUMMARY"].apply(clean_text)
-            st.success("Reviews parsed and cleaned!")
+            with st.spinner("Parsing and cleaning reviews..."):
+                st.session_state["df"]["CLEANED_SUMMARY"] = st.session_state["df"]["SUMMARY"].apply(clean_text)
+                st.success("Reviews parsed and cleaned!")
+        else:
+            st.warning("Please ingest the dataset first.")
+
+with col3:
+    if st.button("🤖 Gemini AI Sentiment Analysis"):
+        if "df" in st.session_state:
+            if gemini_available:
+                try:
+                    with st.spinner("Analyzing sentiment with Gemini AI... (processing first 10 reviews for demo)"):
+                        # Process only first 10 reviews for demo (like M1Lab2)
+                        sample_df = st.session_state["df"].head(10).copy()
+                        sample_df.loc[:, "AI_Sentiment"] = sample_df["SUMMARY"].apply(get_sentiment_with_gemini)
+                        st.session_state["df_with_ai"] = sample_df
+                        st.success("Gemini AI sentiment analysis completed!")
+                except Exception as e:
+                    st.error(f"Something went wrong: {e}")
+            else:
+                st.error("Gemini AI not available. Please check your GEMINI_API_KEY configuration.")
         else:
             st.warning("Please ingest the dataset first.")
 
 # Display the dataset if it exists
 if "df" in st.session_state:
+    # Check if AI analysis has been performed
+    ai_analysis_available = "df_with_ai" in st.session_state
+    
     # Product filter dropdown
     st.subheader("🔍 Filter by Product")
-    product = st.selectbox("Choose a product", ["All Products"] + list(st.session_state["df"]["PRODUCT"].unique()))
-    st.subheader(f"📁 Reviews for {product}")
+    
+    # Use AI dataset if available, otherwise use regular dataset
+    current_df = st.session_state.get("df_with_ai", st.session_state["df"])
+    product = st.selectbox("Choose a product", ["All Products"] + list(current_df["PRODUCT"].unique()))
+    
+    # Show which dataset is being displayed
+    dataset_type = "Gemini AI-Analyzed Dataset (10 samples)" if ai_analysis_available else "Original Dataset"
+    st.subheader(f"📁 {dataset_type} - Reviews for {product}")
 
     if product != "All Products":
-        filtered_df = st.session_state["df"][st.session_state["df"]["PRODUCT"] == product]
+        filtered_df = current_df[current_df["PRODUCT"] == product]
     else:
-        filtered_df = st.session_state["df"]
+        filtered_df = current_df
     
     st.dataframe(filtered_df)
     
@@ -66,8 +170,45 @@ if "df" in st.session_state:
     grouped = st.session_state["df"].groupby(["PRODUCT"])["SENTIMENT_SCORE"].mean()
     st.bar_chart(grouped)
     
+    # Add Gemini AI Sentiment Analysis visualization if available
+    if ai_analysis_available and "AI_Sentiment" in current_df.columns:
+        st.subheader(f"🤖 Gemini AI Sentiment Analysis Results for {product}")
+        
+        # Create Plotly bar chart for AI sentiment distribution using filtered data
+        ai_sentiment_counts = filtered_df["AI_Sentiment"].value_counts().reset_index()
+        ai_sentiment_counts.columns = ['AI_Sentiment', 'Count']
+
+        # Define custom order and colors (same as M1Lab2)
+        sentiment_order = ['Negative', 'Neutral', 'Positive']
+        sentiment_colors = {'Negative': 'red', 'Neutral': 'lightgray', 'Positive': 'green'}
+        
+        # Only include sentiment categories that actually exist in the data
+        existing_sentiments = ai_sentiment_counts['AI_Sentiment'].unique()
+        filtered_order = [s for s in sentiment_order if s in existing_sentiments]
+        filtered_colors = {s: sentiment_colors[s] for s in existing_sentiments if s in sentiment_colors}
+        
+        # Reorder the data according to our custom order (only for existing sentiments)
+        ai_sentiment_counts['AI_Sentiment'] = pd.Categorical(ai_sentiment_counts['AI_Sentiment'], categories=filtered_order, ordered=True)
+        ai_sentiment_counts = ai_sentiment_counts.sort_values('AI_Sentiment')
+        
+        ai_fig = px.bar(
+            ai_sentiment_counts,
+            x="AI_Sentiment",
+            y="Count",
+            title=f"Gemini AI-Generated Sentiment Classifications - {product}",
+            labels={"AI_Sentiment": "Gemini AI Sentiment Category", "Count": "Number of Reviews"},
+            color="AI_Sentiment",
+            color_discrete_map=filtered_colors
+        )
+        ai_fig.update_layout(
+            xaxis_title="Gemini AI Sentiment Category",
+            yaxis_title="Number of Reviews",
+            showlegend=False
+        )
+        st.plotly_chart(ai_fig, use_container_width=True)
+    
     # Add Plotly sentiment breakdown visualization
-    if "SENTIMENT_SCORE" in st.session_state["df"].columns:
+    if "SENTIMENT_SCORE" in current_df.columns:
         st.subheader(f"📊 Plotly Chart - Sentiment Distribution for {product}")
         
         # Create sentiment categories based on sentiment scores
